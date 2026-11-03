@@ -25,9 +25,9 @@
 | 类型 | 平台 | 容器内可用 |
 | --- | --- | --- |
 | 网页类 | 智谱清言、MiniMax Code | ✅ 可用（需登录态，见下文） |
-| 客户端类 | WorkBuddy、豆包工作、Trae CN、Qoder CN | ❌ **不可用**（需要桌面客户端 + CDP 接管，容器里没有 GUI 和客户端） |
+| 客户端类 | WorkBuddy、豆包工作、Trae CN、Qoder CN | ⚠️ 默认不可用；若装了客户端的电脑与容器在同一局域网，可用 **[远程接管模式](#远程接管让容器签到装在你电脑上的客户端)** 变为可用 |
 
-客户端类平台请在配置里保持停用（默认即停用，无需处理）。
+客户端类平台若不配置远程接管，请在配置里保持停用（默认即停用，无需处理）。
 
 ## 快速开始
 
@@ -88,6 +88,90 @@ docker exec -it zaoba node src/index.js dry-run
 
 > ⚠️ **不要让宿主机和容器同时跑同一份 profile**：Chromium 用户数据目录有单实例锁，两边同时签到会互相冲突。选一边跑。
 
+## 远程接管：让容器签到装在你电脑上的客户端
+
+客户端类平台（WorkBuddy / 豆包工作 / Trae CN / Qoder CN）的签到发生在**桌面客户端内部**，容器里没有客户端，所以默认不可用。但它们本质上都是 Electron 应用，开着 CDP 调试端口时可以被远程连接——**容器可以通过局域网接管你 Windows 电脑上正在运行的客户端**，替你点签到。
+
+代价：**那台电脑必须在每天 08:00 前开机，且客户端正在运行**（远程模式不会替你启动客户端）。电脑关机/客户端没开时，对应平台会报 `needs_manual`，其余平台不受影响。
+
+### 工作原理
+
+```
+┌─────────────────┐  局域网   ┌──────────────────────────┐
+│  NAS / 服务器    │ ───────→ │  你的 Windows 电脑         │
+│  zaoba 容器      │  CDP 连接 │  Trae(9223) WorkBuddy(9333)│
+│  ZAOBA_CDP_HOST │          │  豆包工作(9444)            │
+└─────────────────┘          └──────────────────────────┘
+```
+
+客户端的调试端口只监听本机 `127.0.0.1`，所以要靠 Windows 自带的端口转发（portproxy）把它暴露给局域网。
+
+### 第 1 步：Windows 电脑上运行一键脚本（管理员）
+
+下载本仓库的 [`docker/windows-cdp-setup.ps1`](../docker/windows-cdp-setup.ps1)，右键"使用 PowerShell 运行"或在管理员 PowerShell 里执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows-cdp-setup.ps1
+```
+
+脚本会自动完成（重启后依然有效，`-Remove` 可一键卸载）：
+
+- 端口转发：`0.0.0.0:9223/9333/9444 → 127.0.0.1`（对应 Trae / WorkBuddy / 豆包工作）
+- 防火墙放行这些端口
+- 写入 WorkBuddy 专用环境变量 `WORKBUDDY_REMOTE_DEBUGGING_PORT=9333`（它不认命令行参数）
+
+### 第 2 步：让客户端带调试端口运行（每次开机都要有效）
+
+- **WorkBuddy**：脚本已写好环境变量，**完全退出后重启一次**即生效，之后开机自启即可
+- **Trae / 豆包工作**：右键快捷方式 → 属性 → 「目标」末尾追加 ` --remote-debugging-port=9223`（豆包工作用 9444），把改好的快捷方式放入 `Win+R` → `shell:startup` 实现开机自启
+- 客户端要保持登录状态
+
+> 端口冲突注意：Trae CN 和 Qoder CN 默认都配 9223，同一台电脑**同时**开两家会冲突——在 config.json 里把 Qoder 的 `port` 改成 9226 之类的空闲端口，并在脚本里 `-Ports 9223,9226,9333,9444` 加上转发。
+> 豆包（doubao-client）当前版本不支持 CDP，远程接管也救不了它，保持停用。
+
+### 第 3 步：容器侧指定目标电脑
+
+在 `docker run` 加一个环境变量（值填那台电脑的**局域网 IP**，不能是主机名）：
+
+```bash
+docker run -d --name zaoba \
+  -p 7788:7788 \
+  -v zaoba-data:/data \
+  -e TZ=Asia/Shanghai \
+  -e ZAOBA_CDP_HOST=192.168.1.100 \
+  --restart unless-stopped \
+  hitaoge/zaoba:latest
+```
+
+docker compose 写法：
+
+```yaml
+    environment:
+      TZ: Asia/Shanghai
+      ZAOBA_CDP_HOST: 192.168.1.100
+```
+
+也可以不用环境变量，在 config.json 里按平台单独指定：给对应平台加 `"cdpHost": "192.168.1.100"`。
+
+然后在 Web 控制台把要签的客户端类平台设为启用。
+
+### 第 4 步：验证
+
+在 NAS / 服务器上执行（有 JSON 输出就是通了）：
+
+```bash
+curl http://192.168.1.100:9223/json/version   # Trae
+curl http://192.168.1.100:9333/json/version   # WorkBuddy
+```
+
+再在 Web 控制台手动触发一次签到或 `dry-run` 演练看结果。
+
+### 安全提示
+
+- CDP 调试端口等于"完全控制那个客户端"，**只暴露在家庭/办公内网**，绝不要做公网端口映射
+- `ZAOBA_CDP_HOST` 只填内网 IP；调试端口只认 IP 地址不认主机名
+- 不用时执行 `windows-cdp-setup.ps1 -Remove` 一键关闭暴露
+
 ## 常用操作
 
 ```bash
@@ -137,6 +221,7 @@ docker compose pull && docker compose up -d
 | `CHECKIN_ONLY` | — | 只跑指定平台，如 `zhipu,minimax` |
 | `CHECKIN_NO_DELAY` | — | 设为 `1` 关闭随机延迟 |
 | `CHECKIN_DRY_RUN` | — | 设为 `1` 演练模式 |
+| `ZAOBA_CDP_HOST` | `127.0.0.1` | 客户端类平台远程接管：填装了客户端的那台电脑的**局域网 IP**（详见[远程接管章节](#远程接管让容器签到装在你电脑上的客户端)） |
 
 ## 备份 / 迁移
 
@@ -152,7 +237,7 @@ docker run --rm -v zaoba-data:/data -v $(pwd):/backup alpine \
 
 ## 已知限制
 
-1. **客户端类平台不可用**（见开头表格）——这是产品形态决定的，不是 bug。
+1. **客户端类平台默认不可用**（见开头表格）——需要桌面客户端；可用[远程接管模式](#远程接管让容器签到装在你电脑上的客户端)让局域网内电脑上的客户端代跑，但那台电脑必须每天 08:00 前开机且客户端在运行。豆包（doubao-client）当前版本不支持 CDP，远程接管也无效。
 2. **Linux 宿主机绑定挂载 `/data` 时注意权限**：容器内以 uid 1000（镜像自带 `node` 用户）运行，宿主机目录需要 `chown -R 1000:1000`，或直接用命名卷。
 3. 智谱清言会话有效期较短，失效后在宿主机重新 `npm run login` 并同步 profile 即可。
 4. 镜像约 1.5~1.8GB（含 Chromium 及其系统依赖）。

@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import platform from '../platform.js';
 import { defineAdapter } from './base.js';
 import { sleep } from '../util.js';
+import { resolveCdpHost, isRemoteCdp } from './clientApp.js';
 
 /**
  * 腾讯 WorkBuddy（桌面客户端）—— 签到在客户端里，网页没有。
@@ -33,9 +34,9 @@ function workbuddyBin(cfg) {
   return picked ? platform.resolveExecutable(picked) : null;
 }
 
-async function cdpVersion(port) {
+async function cdpVersion(host, port) {
   try {
-    const r = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1500) });
+    const r = await fetch(`http://${host}:${port}/json/version`, { signal: AbortSignal.timeout(1500) });
     return r.ok ? await r.json() : null;
   } catch {
     return null;
@@ -62,10 +63,10 @@ async function launchWithDebug(port, logger, execPath) {
   return child.pid;
 }
 
-async function waitForCdp(port, logger, timeoutMs = 90000) {
+async function waitForCdp(cdpHost, port, logger, timeoutMs = 90000) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
-    const v = await cdpVersion(port);
+    const v = await cdpVersion(cdpHost, port);
     if (v) {
       logger.info(`CDP 就绪: ${v.Browser}`);
       return true;
@@ -110,16 +111,28 @@ export default defineAdapter({
 
   custom: async ({ logger, cfg, dryRun = false }) => {
     const pc = cfg.platforms?.workbuddy || {};
-    const execPath = workbuddyBin(cfg);
     const port = Number(pc.cdpPort || DEFAULT_PORT);
+    // 远程接管模式（Docker 等）：WorkBuddy 跑在另一台机器上，只连接、不启动不退出
+    const cdpHost = resolveCdpHost(pc);
+    const isRemote = isRemoteCdp(pc);
+    const execPath = isRemote ? null : workbuddyBin(cfg);
     const quitAfter = pc.quitAfterLaunch !== false;
     const meta = {};
     const done = (st, detail) => ({ status: st, detail, meta });
 
     // 1) 已在跑？直接连。没跑？用调试端口拉起来。
     let launchedPid = null;
-    let version = await cdpVersion(port);
+    let version = await cdpVersion(cdpHost, port);
 
+    if (!version && isRemote) {
+      return {
+        status: 'needs_manual',
+        detail:
+          `远程接管模式：连不上 ${cdpHost}:${port}（WorkBuddy）。请确认：` +
+          '① 那台电脑已开机、WorkBuddy 正在运行且带环境变量 WORKBUDDY_REMOTE_DEBUGGING_PORT=' + port + ' 启动 ' +
+          '② 端口转发和防火墙已放行（Windows 上跑 docker/windows-cdp-setup.ps1）',
+      };
+    }
     if (!version) {
       if (execPath && (await isAppRunning(execPath))) {
         // 客户端在跑但没开调试端口：不能强杀用户正在用的窗口
@@ -132,19 +145,19 @@ export default defineAdapter({
         };
       }
       launchedPid = await launchWithDebug(port, logger, execPath);
-      if (!(await waitForCdp(port, logger))) {
+      if (!(await waitForCdp(cdpHost, port, logger))) {
         await quitApp(launchedPid, logger, execPath);
         return { status: 'error', detail: '客户端已启动但 CDP 端口没起来（90s 超时）' };
       }
-      version = await cdpVersion(port);
+      version = await cdpVersion(cdpHost, port);
     } else {
-      logger.step('检测到客户端已在运行且调试端口可用，直接接管');
+      logger.step(isRemote ? `已连上远程调试端口 ${cdpHost}:${port}，直接接管` : '检测到客户端已在运行且调试端口可用，直接接管');
     }
 
     // 2) 接管渲染进程
     let browser;
     try {
-      browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 20000 });
+      browser = await chromium.connectOverCDP(`http://${cdpHost}:${port}`, { timeout: 20000 });
     } catch (e) {
       if (launchedPid) await quitApp(launchedPid, logger, execPath);
       return { status: 'error', detail: `连接 CDP 失败: ${String(e.message).split('\n')[0]}` };

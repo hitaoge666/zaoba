@@ -12,6 +12,9 @@ services:
       # ZAOBA_PORT: 7788        # 容器内监听端口（默认 7788）
       # CHECKIN_ONLY: zhipu     # 只跑指定平台（逗号分隔）
       # CHECKIN_NO_DELAY: "1"   # 关闭随机延迟（补跑/调试用）
+      # 远程接管：签装在局域网内 Windows 电脑上的客户端（Trae/WorkBuddy/豆包工作）
+      # 值填那台电脑的局域网 IP，见 docs/DOCKER.md「远程接管」章节
+      # ZAOBA_CDP_HOST: 192.168.1.100
     volumes:
       # 方式 A：命名卷（推荐，权限自动处理）
       - zaoba-data:/data

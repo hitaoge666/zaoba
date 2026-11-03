@@ -34,13 +34,23 @@ import { findClickables, clickByKeywords, pageText, classifyOutcome, detectLogin
  *   }
  */
 
-async function cdpVersion(port) {
+async function cdpVersion(host, port) {
   try {
-    const r = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1500) });
+    const r = await fetch(`http://${host}:${port}/json/version`, { signal: AbortSignal.timeout(1500) });
     return r.ok ? await r.json() : null;
   } catch {
     return null;
   }
+}
+
+/** 解析 CDP 目标地址：默认本机；pc.cdpHost > 环境变量 ZAOBA_CDP_HOST > 127.0.0.1 */
+export function resolveCdpHost(pc) {
+  return pc?.cdpHost || process.env.ZAOBA_CDP_HOST || '127.0.0.1';
+}
+
+export function isRemoteCdp(pc) {
+  const h = resolveCdpHost(pc);
+  return h !== '127.0.0.1' && h !== 'localhost';
 }
 
 async function asynIsRunning(execPath) {
@@ -76,21 +86,25 @@ async function quitApp(pid, execPath, logger) {
 
 export async function runClientApp(pc, { logger, cfg, shotDir, shotName, dryRun = false } = {}) {
   const port = Number(pc.port || 9445);
+  // 远程接管模式（Docker 等）：客户端跑在另一台机器上，这里只通过网络连它的调试端口，
+  // 不做存在性检查、不启动、不重启、不退出——那台机器上的客户端归用户自己管。
+  const cdpHost = resolveCdpHost(pc);
+  const isRemote = isRemoteCdp(pc);
   const appOrBin = pc.app || pc.bin;
-  if (appOrBin && platform.isMacOS && !fs.existsSync(appOrBin)) {
+  if (appOrBin && !isRemote && platform.isMacOS && !fs.existsSync(appOrBin)) {
     return {
       status: 'not_installed',
       detail: `没有找到客户端 ${appOrBin}。装上并登录后，把 config.json 里的 app/app路径 改对再启用`,
     };
   }
-  const execPath = resolveExecutable(pc);
+  const execPath = isRemote ? null : resolveExecutable(pc);
   const quitAfter = pc.quitAfterLaunch !== false;
   const timeoutMs = Number(pc.launchTimeoutMs || 60000);
 
   // 1) 端口已在监听 → 直接接管；否则按配置拉起客户端
-  let version = await cdpVersion(port);
+  let version = await cdpVersion(cdpHost, port);
   let launchedPid = null;
-  const wasRunningAtStart = await asynIsRunning(execPath);
+  const wasRunningAtStart = isRemote ? false : await asynIsRunning(execPath);
 
   // 拉起客户端所需的环境与参数（后面的重启重试也要用，所以在 if 外面准备好）
   const launchEnv = { ...process.env };
@@ -108,7 +122,7 @@ export async function runClientApp(pc, { logger, cfg, shotDir, shotName, dryRun 
     launchedPid = child.pid;
     const t0 = Date.now();
     while (Date.now() - t0 < timeoutMs) {
-      const v = await cdpVersion(port);
+      const v = await cdpVersion(cdpHost, port);
       if (v) return v;
       await sleep(1200);
     }
@@ -116,6 +130,16 @@ export async function runClientApp(pc, { logger, cfg, shotDir, shotName, dryRun 
   };
 
   if (!version) {
+    if (isRemote) {
+      return {
+        status: 'needs_manual',
+        detail:
+          `远程接管模式：连不上 ${cdpHost}:${port}。请确认：` +
+          '① 那台电脑已开机、客户端正在运行且带调试端口启动 ' +
+          '② 端口转发和防火墙已放行（Windows 上跑 docker/windows-cdp-setup.ps1）' +
+          '③ cdpHost 填的是那台电脑的局域网 IP（不能是主机名）',
+      };
+    }
     if (wasRunningAtStart) {
       if (!pc.autoRestart) {
         return {
@@ -147,13 +171,13 @@ export async function runClientApp(pc, { logger, cfg, shotDir, shotName, dryRun 
     }
     logger?.info(`CDP 就绪: ${version.Browser}`);
   } else {
-    logger?.step(`检测到调试端口 ${port} 已就绪，直接接管`);
+    logger?.step(isRemote ? `已连上远程调试端口 ${cdpHost}:${port}，直接接管` : `检测到调试端口 ${port} 已就绪，直接接管`);
   }
 
   // 2) 连进去
   let browser;
   try {
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 20000 });
+    browser = await chromium.connectOverCDP(`http://${cdpHost}:${port}`, { timeout: 20000 });
   } catch (e) {
     if (launchedPid) await quitApp(launchedPid, execPath, logger);
     return { status: 'error', detail: `连接 CDP 失败: ${String(e.message).split('\n')[0]}` };
@@ -186,6 +210,12 @@ export async function runClientApp(pc, { logger, cfg, shotDir, shotName, dryRun 
       // 这时 CDP 里只剩客户端自己的后台页（如 Trae 的 solo-lite），Playwright 认不出来。
       // 重启一次客户端，工作区窗口才会重新建出来。
       if (!page) {
+        if (isRemote) {
+          return {
+            status: 'error',
+            detail: `${pc.name || '客户端'}（${cdpHost}）只有后台页、没有可操作窗口。请在那台电脑上手动打开 ${pc.name || '客户端'} 的主窗口后重试`,
+          };
+        }
         logger?.warn(`${pc.name || '客户端'} 只有后台页、没有可操作窗口，重启一次再试`);
         await browser.close().catch(() => null);
         await gracefulQuitApp(pc, execPath, logger);
@@ -194,7 +224,7 @@ export async function runClientApp(pc, { logger, cfg, shotDir, shotName, dryRun 
         if (!version) {
           return { status: 'error', detail: `重启 ${pc.name || '客户端'} 后调试端口 ${port} 仍未就绪` };
         }
-        browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 20000 });
+        browser = await chromium.connectOverCDP(`http://${cdpHost}:${port}`, { timeout: 20000 });
         pages = browser.contexts().flatMap((c) => c.pages());
         for (let i = 0; i < 20 && !pages.length; i++) {
           await sleep(1500);
