@@ -110,6 +110,6 @@ docker run --rm -v zaoba-data:/data -v $(pwd):/backup alpine \
 ## 已知限制
 
 1. **客户端类平台不可用**（见开头表格）——这是产品形态决定的，不是 bug。
-2. **Linux 宿主机绑定挂载 `/data` 时注意权限**：容器内以 uid 1000（用户 `zaoba`）运行，宿主机目录需要 `chown -R 1000:1000`，或直接用命名卷。
+2. **Linux 宿主机绑定挂载 `/data` 时注意权限**：容器内以 uid 1000（镜像自带 `node` 用户）运行，宿主机目录需要 `chown -R 1000:1000`，或直接用命名卷。
 3. 智谱清言会话有效期较短，失效后在宿主机重新 `npm run login` 并同步 profile 即可。
 4. 镜像约 1.5~1.8GB（含 Chromium 及其系统依赖）。
