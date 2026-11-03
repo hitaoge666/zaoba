@@ -506,11 +506,12 @@ export async function startServer({ port = 7788, logger } = {}) {
 
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, '127.0.0.1', resolve);
+    // 默认只监听 127.0.0.1（本机安全）；Docker 等场景可用 ZAOBA_HOST=0.0.0.0 覆盖
+    server.listen(port, process.env.ZAOBA_HOST || '127.0.0.1', resolve);
   });
 
   const addr = server.address();
-  const url = `http://127.0.0.1:${addr.port}`;
+  const url = `http://${process.env.ZAOBA_HOST || '127.0.0.1'}:${addr.port}`;
   return {
     server,
     url,
@@ -538,7 +539,7 @@ export async function webCommand({ port = 7788 } = {}) {
   console.log('  ╭──────────────────────────────────────────────╮');
   console.log(`  │  早八 zaoba  →  ${s.url.padEnd(29)}│`);
   console.log('  ╰──────────────────────────────────────────────╯');
-  console.log('  · 只监听 127.0.0.1，不对外网开放');
+  console.log(`  · 监听 ${process.env.ZAOBA_HOST || '127.0.0.1'}（Docker 里可设 ZAOBA_HOST=0.0.0.0 对外）`);
   console.log('  · Ctrl+C 停止');
   console.log('');
   process.on('SIGINT', async () => {

@@ -1,0 +1,12 @@
+node_modules
+.git
+.github
+data
+profile
+*.zip
+docs
+scripts
+README.md
+RESEARCH.md
+LICENSE
+config.json
