@@ -30,31 +30,29 @@ Playwright 持久化登录态 + launchd 定时，**装好后不用再管**。
 
 > 各平台积分**能留多久**（哪天清零）整理在 **[AI 积分活动与时效对照表](./docs/CREDITS.md)**（2026-10-31 核验）：扣子 1 天、Qoder 当日窗口、MiniMax 30 天、WorkBuddy 月底/活动截止清零。
 
-## 下载
+## 安装使用（选一种适合你的方式）
 
-不想用 git？直接下打包好的 zip（解压即用，含安装说明）：
+> **不知道选哪个？看这里：**
+>
+> | 你的情况 | 推荐方式 |
+> | --- | --- |
+> | 有 NAS / 不关机的 Linux 服务器，只签**网页类**平台（智谱、MiniMax） | 👉 **方式一：Docker**（最省心，装完不用管） |
+> | Windows 电脑常开，想签 WorkBuddy / 豆包等**客户端类**积分 | 👉 **方式二：Windows 脚本** |
+> | Mac 电脑常开，想签客户端类积分 | 👉 **方式三：macOS 脚本** |
+> | 完全不想碰命令行 | 👉 **方式四：让 AI 帮你装** |
+> | 想知道每一步在干什么 | 👉 **方式五：手动安装** |
 
-- **Windows**：[zaoba-win.zip](https://github.com/BorisSun0424-boop/zaoba/releases/latest/download/zaoba-win.zip)
-- **macOS**：[zaoba-mac.zip](https://github.com/BorisSun0424-boop/zaoba/releases/latest/download/zaoba-mac.zip)
-- 国内直连不稳时用镜像：`https://gh-proxy.com/https://github.com/BorisSun0424-boop/zaoba/releases/latest/download/zaoba-win.zip`（mac 同理换文件名）
+---
 
-## Docker 部署（NAS / 服务器推荐）
+### 方式一：Docker（最省心，推荐 NAS / 服务器）
 
-不想装 Node、不想碰定时任务？直接用现成镜像，一条命令跑起来（镜像内已包含定时器和 Web 控制台）：
+**适合**：有 NAS、家庭服务器或任意不关机的 Linux 机器；只需网页类平台（智谱清言、MiniMax Code）的签到。
 
-| 镜像仓库 | 地址 |
-| --- | --- |
-| **Docker Hub** | `hitaoge/zaoba` |
-| GitHub GHCR | `ghcr.io/hitaoge666/zaoba` |
+**第 0 步 · 确认装了 Docker**（敲 `docker -v` 有版本号就行；没装看 [Docker 安装教程](https://docs.docker.com/get-docker/)，NAS 一般在应用商店直接装）
 
-### 一分钟上手
+**第 1 步 · 拉镜像并启动**（复制整段执行）：
 
 ```bash
-# ① 拉镜像（两个源任选其一，国内建议 Docker Hub）
-docker pull hitaoge/zaoba:latest
-# docker pull ghcr.io/hitaoge666/zaoba:latest
-
-# ② 跑起来（登录态/配置/报表都在 /data，用 volume 持久化）
 docker run -d \
   --name zaoba \
   -p 7788:7788 \
@@ -62,12 +60,9 @@ docker run -d \
   -e TZ=Asia/Shanghai \
   --restart unless-stopped \
   hitaoge/zaoba:latest
-
-# ③ 打开控制台
-# http://<宿主机IP>:7788
 ```
 
-或者用 docker compose（把本仓库的 [`docker-compose.yml`](./docker-compose.yml) 拷过去）：
+也可以用 docker compose（把本仓库的 [`docker-compose.yml`](./docker-compose.yml) 拷到机器上，执行 `docker compose up -d`）：
 
 ```yaml
 services:
@@ -83,72 +78,114 @@ services:
       - zaoba-data:/data
 ```
 
+镜像内已自带**定时器**（每天 08:00 自动签到、12:30 补跑）和 **Web 控制台**，不需要再装任何东西。两个镜像源内容相同，国内建议用 Docker Hub：
+
+| 镜像源 | 地址 |
+| --- | --- |
+| **Docker Hub**（国内推荐） | `hitaoge/zaoba` |
+| GitHub GHCR | `ghcr.io/hitaoge666/zaoba` |
+
+**第 2 步 · 打开控制台**：浏览器访问 `http://<机器的IP>:7788`（本机就是 `http://localhost:7788`），能看到平台卡片就说明跑起来了。
+
+**第 3 步 · 登录（一次性）**：容器里没有屏幕没法扫码，所以在**任意一台电脑**上用方式二/三/四装一份并 `npm run login` 登录，然后把登录态拷进容器：
+
 ```bash
-docker compose up -d
+# macOS / Linux:
+docker cp ~/.zaoba/profile/. zaoba:/data/profile/
+# Windows (PowerShell):
+docker cp $env:USERPROFILE\.zaoba\profile\. zaoba:/data/profile/
 ```
 
-> **首次使用还需一步**：在任意电脑上装一份本工具并 `npm run login` 登录，再把登录态拷进容器：
-> `docker cp ~/.zaoba/profile/. zaoba:/data/profile/`（Windows 是 `%USERPROFILE%\.zaoba\profile`）
+之后每天自动签到，日志和日报都在控制台里看。
+
+> ⚠️ 容器内只支持**网页类平台**（智谱清言、MiniMax Code）。WorkBuddy / 豆包工作 / Trae / Qoder 的签到在桌面客户端里，必须在真机上跑（用下面的方式二/三），容器里用不了。
 >
-> ⚠️ 容器内只支持**网页类平台**（智谱清言、MiniMax Code）；WorkBuddy / 豆包工作 / Trae 等桌面客户端类平台需要在真机上跑，容器里不可用。
+> 更完整的说明（登录态迁移、备份、环境变量、常见问题）见 **[docs/DOCKER.md](./docs/DOCKER.md)**。
 
-完整的部署说明（登录态迁移、备份、环境变量、已知限制）见 **[docs/DOCKER.md](./docs/DOCKER.md)**。
+---
 
-## 安装（本机直接跑）
+### 方式二：Windows 一键脚本（本机跑）
 
-> **第一次用？先看 [上手教程（从零到每天自动到账）](./docs/GETTING-STARTED.md)** —— 里面写了每个平台要不要装客户端、要不要登录、`dry-run` 每个状态怎么修。
+**适合**：Windows 10/11 常开的电脑，想签 WorkBuddy / 豆包工作等客户端积分。
 
-三种方式，任选一种：
-
-| 方式 | 适合谁 | 怎么做 |
-| --- | --- | --- |
-| **交给 AI Agent** | 不想碰终端 | 复制 [docs/AGENT-PROMPT.md](./docs/AGENT-PROMPT.md) 里的指令给你的 Agent，它负责装 Node ≥18、依赖、浏览器内核、定时任务 |
-| **一键脚本** | 有终端经验 | macOS：`bash scripts/bootstrap.sh`（先 `--check` 自检，加 `--with-service` 装定时任务）<br>Windows：`powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1`（先 `-Check`，加 `-WithService`） |
-| **手动命令** | 想完全掌控 | 见 [docs/INSTALL.md](./docs/INSTALL.md) |
-
-> ⚠️ **Windows 用户请务必用 `.ps1` 脚本**（PowerShell），不要跑 `bash ... .sh`——那是 macOS 专用的，在 Windows 上会直接报「只支持 macOS」并退出。
-
-前置条件：macOS 12+ 或 Windows 10/11、**Node.js ≥ 18**、约 1.5GB 磁盘（依赖 + 570MB 浏览器内核；Windows 默认复用系统 Edge 可省掉这 570MB）。
-
-## 一分钟上手
-
-### macOS
-
-```bash
-git clone https://github.com/BorisSun0424-boop/zaoba.git
+```powershell
+git clone https://github.com/hitaoge666/zaoba.git
 cd zaoba
 
 # 国内直连 GitHub 不稳定时，用镜像（内容相同）：
-# git clone https://ghfast.top/https://github.com/BorisSun0424-boop/zaoba.git zaoba
+# git clone https://ghfast.top/https://github.com/hitaoge666/zaoba.git zaoba
+
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1 -Check   # ① 自检：看缺什么
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1          # ② 安装（复用系统 Edge，省 570MB）
+npm run login                                                          # ③ 登录智谱清言（WorkBuddy 用客户端扫码即可）
+npm run dry-run                                                        # ④ 演练：只检查不签到
+npm run checkin                                                        # ⑤ 真跑一次
+powershell -ExecutionPolicy Bypass -File scripts\install-service.ps1   # ⑥ 装定时任务（每天 08:00 + 12:30 补跑）
+npm run web                                                            # ⑦ 打开控制台 → http://127.0.0.1:7788
+```
+
+> ⚠️ **务必用 `.ps1` 脚本**（PowerShell），不要跑 `bash ... .sh`——那是 macOS 专用的，在 Windows 上会直接报「只支持 macOS」并退出。
+
+---
+
+### 方式三：macOS 一键脚本（本机跑）
+
+**适合**：Mac 常开（或每天 8 点前会开），想签 WorkBuddy / 豆包工作等客户端积分。
+
+```bash
+git clone https://github.com/hitaoge666/zaoba.git
+cd zaoba
+
+# 国内直连 GitHub 不稳定时，用镜像（内容相同）：
+# git clone https://ghfast.top/https://github.com/hitaoge666/zaoba.git zaoba
 
 bash scripts/bootstrap.sh --check    # ① 自检：看缺 Node / 依赖 / 浏览器内核哪一项
 bash scripts/bootstrap.sh            # ② 安装（幂等，重复执行没问题）
 npm run login                        # ③ 登录智谱清言（WorkBuddy 用客户端扫码即可）
 npm run dry-run                      # ④ 演练：只检查不签到
 npm run checkin                      # ⑤ 真跑一次
-bash scripts/install-launchd.sh      # ⑥ 装定时任务（每天 08:00 + 12:30 补跑）+ 常驻控制台
+bash scripts/install-launchd.sh      # ⑥ 装定时任务 + 常驻控制台
 npm run web                          # ⑦ 打开控制台 → http://127.0.0.1:7788
 ```
 
-### Windows（PowerShell）
+> Mac 合盖睡眠时任务不会跑，唤醒后靠 12:30 补跑兜底；想更稳可以 `sudo pmset repeat wakeorpoweron MTWRFSU 07:55:00` 让它 7:55 自动醒。
 
-```powershell
-git clone https://github.com/BorisSun0424-boop/zaoba.git
-cd zaoba
+---
 
-# 国内直连 GitHub 不稳定时，用镜像（内容相同）：
-# git clone https://ghfast.top/https://github.com/BorisSun0424-boop/zaoba.git zaoba
+### 方式四：让 AI 帮你装（不碰命令行）
 
-powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1 -Check   # ① 自检
-powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1          # ② 安装（复用系统 Edge，省 570MB）
-npm run login                                                          # ③ 登录智谱清言（WorkBuddy 用客户端扫码即可）
-npm run dry-run                                                        # ④ 演练：只检查不签到
-npm run checkin                                                        # ⑤ 真跑一次
-powershell -ExecutionPolicy Bypass -File scripts\install-service.ps1   # ⑥ 装定时任务（任务计划程序 ZaobaDailyCheckin）
-npm run web                                                            # ⑦ 打开控制台 → http://127.0.0.1:7788
-```
+把下面这段话复制给 WorkBuddy / Claude Code / Cursor 等能执行命令的 AI 助手，它会替你完成方式二/三的全部步骤：
 
-详细的权限、电源（睡眠/锁屏）、客户端要求、常见问题见 **[docs/INSTALL.md](./docs/INSTALL.md)**。
+> 帮我在这台电脑上安装这个开源工具：https://github.com/hitaoge666/zaoba
+> 要求：
+> 1. 先读仓库里的 docs/AGENT-PROMPT.md，严格按里面的安全约束执行
+> 2. 装到 ~/Desktop/zaoba 目录（Windows 用 %USERPROFILE%\Desktop\zaoba）
+> 3. 如果 GitHub 连不上，改用镜像：git clone https://gh-proxy.com/https://github.com/hitaoge666/zaoba.git ~/Desktop/zaoba
+> 4. 跑自检和安装脚本（macOS 用 bootstrap.sh，Windows 用 bootstrap.ps1）
+> 5. 不要安装定时任务
+> 6. 装完启动控制台 node src/index.js web，告诉我访问地址
+
+（扫码登录还是得你本人做，AI 只负责装。）完整版指令见 [docs/AGENT-PROMPT.md](./docs/AGENT-PROMPT.md)。
+
+---
+
+### 方式五：手动安装（进阶）
+
+想完全掌控每一步（权限、电源策略、浏览器内核、定时任务细节），见 **[docs/INSTALL.md](./docs/INSTALL.md)** 和 **[上手教程](./docs/GETTING-STARTED.md)**。
+
+前置条件（方式二～五通用）：macOS 12+ 或 Windows 10/11、**Node.js ≥ 18**、约 1.5GB 磁盘（依赖 + 570MB 浏览器内核；Windows 默认复用系统 Edge 可省掉这 570MB）。
+
+---
+
+### 不想用 git？直接下载 zip
+
+解压即用，含安装说明：
+
+- **Windows**：[zaoba-win.zip](https://github.com/BorisSun0424-boop/zaoba/releases/latest/download/zaoba-win.zip)
+- **macOS**：[zaoba-mac.zip](https://github.com/BorisSun0424-boop/zaoba/releases/latest/download/zaoba-mac.zip)
+- 国内直连不稳时用镜像：`https://gh-proxy.com/https://github.com/BorisSun0424-boop/zaoba/releases/latest/download/zaoba-win.zip`（mac 同理换文件名）
+
+> 下载 zip 后按方式二 / 三的 ① 之后的步骤继续即可。Docker 用户不需要 zip，直接拉镜像。
 
 ## 常用命令
 
@@ -221,30 +258,6 @@ sudo pmset repeat wakeorpoweron MTWRFSU 07:55:00
 ```
 
 Windows：安装脚本创建的计划任务已带上 **「唤醒计算机运行此任务」+「错过则尽快启动」**，睡眠错过也会在唤醒后补跑。
-
-## 交给 AI Agent 安装（复制这段）
-
-把下面整段粘给 WorkBuddy / Claude Code / Cursor / DSH 等能执行命令的 Agent：
-
-```
-帮我在这台电脑上安装这个开源工具：
-https://github.com/BorisSun0424-boop/zaoba
-
-要求：
-1. 先读仓库里的 docs/AGENT-PROMPT.md，严格按里面的安全约束执行
-2. 装到 ~/Desktop/zaoba 目录（Windows 用 %USERPROFILE%\Desktop\zaoba）
-3. 如果 GitHub 连不上（国内常见，30 秒没动静就算失败），改用镜像：
-   git clone https://gh-proxy.com/https://github.com/BorisSun0424-boop/zaoba.git ~/Desktop/zaoba
-4. 先跑 bash scripts/bootstrap.sh --check（Windows: powershell -File scripts\bootstrap.ps1 -Check）
-   再跑 bash scripts/bootstrap.sh（Windows 去掉 -Check）
-5. 不要安装定时任务（先不要跑 install-launchd.sh / install-service.ps1）
-6. 装完启动控制台 node src/index.js web，告诉我访问地址
-7. 最后汇报：Node 版本、有没有下载浏览器内核、自检结果、控制台地址
-```
-
-更完整的 Agent 版步骤（含权限约束、登录引导、失败处理）见 [docs/AGENT-PROMPT.md](./docs/AGENT-PROMPT.md)。
-
-注意：Agent 只能装好程序，**扫码登录还得你本人做**。
 
 ## 选择你要的平台（统一入口）
 
