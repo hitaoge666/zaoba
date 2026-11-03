@@ -36,12 +36,11 @@ COPY web ./web
 COPY config.example.json ./
 COPY docker ./docker
 
-# 非 root 用户（Chromium 沙箱需要）
-RUN useradd -m -u 1000 zaoba \
-    && mkdir -p /data/profile \
-    && chown -R zaoba:zaoba /app /data
+# 非 root 用户（Chromium 沙箱需要）——直接用镜像自带的 node 用户（uid 1000）
+RUN mkdir -p /data/profile \
+    && chown -R node:node /app /data
 
-USER zaoba
+USER node
 WORKDIR /app
 
 VOLUME /data
