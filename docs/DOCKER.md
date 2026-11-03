@@ -9,7 +9,14 @@
 | **Docker Hub** | `hitaoge/zaoba` | 国内拉取推荐 |
 | GitHub GHCR | `ghcr.io/hitaoge666/zaoba` | 与 Docker Hub 内容完全相同 |
 
-标签规则：`latest`（最新稳定）、`main`（main 分支构建）、`sha-xxxxxxx`（具体提交）。
+标签规则（版本号从 **v1.0.0** 起独立计数，与上游源码版本无关）：
+
+| 标签 | 含义 |
+| --- | --- |
+| `latest` | 最新稳定版（推荐日常使用） |
+| `1.0.0`、`1.1.0` … | 发布版本（对应仓库的 `v1.0.0` 等标签） |
+| `main` | main 分支最新构建 |
+| `sha-xxxxxxx` | 具体某次提交的构建（排查问题用） |
 
 > 本仓库每天北京时间 09:30 自动检查上游 [BorisSun0424-boop/zaoba](https://github.com/BorisSun0424-boop/zaoba) 更新并合并重建镜像，`latest` 始终与上游保持同步（合并冲突时会自动开 issue 提醒，在 Actions 页面也可随时手动触发检查）。
 
@@ -92,6 +99,22 @@ docker exec -it zaoba node src/index.js report     # 看今日日报
 docker exec -it zaoba node src/auth-check.js       # 登录态自检
 docker compose down               # 停止
 ```
+
+## 怎么升级镜像
+
+本仓库每天自动同步上游并重建镜像，升级只需拉新镜像并重建容器（登录态在 `/data`，不会丢）：
+
+```bash
+# docker run 方式启动的：
+docker stop zaoba && docker rm zaoba
+docker pull hitaoge/zaoba:latest
+docker run -d --name zaoba -p 7788:7788 -v zaoba-data:/data -e TZ=Asia/Shanghai --restart unless-stopped hitaoge/zaoba:latest
+
+# docker compose 方式启动的：
+docker compose pull && docker compose up -d
+```
+
+想固定在某个版本不跟着更新？把 `latest` 换成具体版本号（如 `1.0.0`）即可。
 
 修改运行时间：直接在 Web 控制台右上角改（立即生效，容器内定时器每 30 秒读一次配置），或改 `/data/config.json` 的 `schedule` 字段。
 

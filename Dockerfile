@@ -37,7 +37,9 @@ COPY config.example.json ./
 COPY docker ./docker
 
 # 非 root 用户（Chromium 沙箱需要）——直接用镜像自带的 node 用户（uid 1000）
-RUN mkdir -p /data/profile \
+# chmod: 确保 entrypoint.sh 有执行位（Windows 上 checkout 会丢失 git 的 +x 标记）
+RUN chmod +x /app/docker/entrypoint.sh \
+    && mkdir -p /data/profile \
     && chown -R node:node /app /data
 
 USER node

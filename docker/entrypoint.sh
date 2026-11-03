@@ -9,7 +9,14 @@ set -e
 APP=/app
 DATA=/data
 
-mkdir -p "$DATA" "$DATA/data" "$DATA/profile"
+# /data 可写检查（绑定挂载宿主机目录时常见权限问题，给出明确指引而不是无限重启）
+if ! mkdir -p "$DATA/data" "$DATA/profile" 2>/dev/null; then
+  echo "[entrypoint] ❌ 无法写入 /data（权限不足）"
+  echo "[entrypoint] 若你把宿主机目录挂载到 /data，请在宿主机执行："
+  echo "[entrypoint]   chown -R 1000:1000 <挂载的宿主机目录>"
+  echo "[entrypoint] （容器内以 uid 1000 的 node 用户运行）"
+  exit 1
+fi
 
 # config.json: 不存在则生成默认配置（软链进 /app，改配置即落盘到 /data）
 if [ ! -f "$DATA/config.json" ]; then
