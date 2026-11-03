@@ -1,0 +1,5 @@
+# 容器内运行的脚本必须是 LF，否则 /bin/sh 报 bad interpreter
+*.sh       text eol=lf
+docker/**  text eol=lf
+Dockerfile text eol=lf
+*.yml      text eol=lf
