@@ -90,3 +90,24 @@ jobs:
           tags: ${{ steps.meta-hub.outputs.tags }}
           labels: ${{ steps.meta-hub.outputs.labels }}
           cache-from: type=gha
+
+      # ---------- 冒烟测试：真启动一次容器，确认控制台能访问 ----------
+      - name: Smoke test (启动容器验证)
+        run: |
+          docker run -d --name zaoba-smoke -p 17788:7788 ghcr.io/hitaoge666/zaoba:latest
+          ok=0
+          for i in $(seq 1 30); do
+            sleep 2
+            if curl -sf http://127.0.0.1:17788/api/state > /dev/null 2>&1; then
+              echo "✅ Web 控制台响应正常"
+              ok=1
+              break
+            fi
+          done
+          echo "===== 容器日志（最后 30 行）====="
+          docker logs zaoba-smoke 2>&1 | tail -30
+          docker rm -f zaoba-smoke > /dev/null 2>&1
+          if [ "$ok" != "1" ]; then
+            echo "❌ 控制台无响应，镜像不可用"
+            exit 1
+          fi
