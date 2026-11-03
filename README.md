@@ -1,11 +1,15 @@
-# 早八（zaoba）
+# 早八（zaoba）· Docker 版
 
-[![CI](https://github.com/BorisSun0424-boop/zaoba/actions/workflows/ci.yml/badge.svg)](https://github.com/BorisSun0424-boop/zaoba/actions/workflows/ci.yml)
+[![sync-upstream](https://github.com/hitaoge666/zaoba/actions/workflows/sync-upstream.yml/badge.svg)](https://github.com/hitaoge666/zaoba/actions/workflows/sync-upstream.yml)
+[![docker](https://github.com/hitaoge666/zaoba/actions/workflows/docker.yml/badge.svg)](https://github.com/hitaoge666/zaoba/actions/workflows/docker.yml)
 
 > 每天 8:00，替你领额度。
 
 每天定时自动完成 AI 工具的"每日签到 / 领积分"，跑完给你发 macOS 通知 + 一份日报。
 Playwright 持久化登录态 + launchd 定时，**装好后不用再管**。
+
+> **关于本仓库**：上游是 [BorisSun0424-boop/zaoba](https://github.com/BorisSun0424-boop/zaoba)，本仓库在其基础上增加了 Docker 部署支持。
+> **每天北京时间 09:30 自动检查上游更新**，有新提交就自动合并进来并重建发布 Docker 镜像（详见 [`.github/workflows/sync-upstream.yml`](./.github/workflows/sync-upstream.yml)），无需人工跟进；若合并冲突会自动开 issue 提醒。
 
 > 目前真正能**每天自动签到**的：**WorkBuddy**、**豆包工作**、**智谱清言**（需登录一次）。
 > 另外 **Trae CN / Qoder CN** 已预置适配器，装上客户端即可启用。
@@ -34,7 +38,63 @@ Playwright 持久化登录态 + launchd 定时，**装好后不用再管**。
 - **macOS**：[zaoba-mac.zip](https://github.com/BorisSun0424-boop/zaoba/releases/latest/download/zaoba-mac.zip)
 - 国内直连不稳时用镜像：`https://gh-proxy.com/https://github.com/BorisSun0424-boop/zaoba/releases/latest/download/zaoba-win.zip`（mac 同理换文件名）
 
-## 安装
+## Docker 部署（NAS / 服务器推荐）
+
+不想装 Node、不想碰定时任务？直接用现成镜像，一条命令跑起来（镜像内已包含定时器和 Web 控制台）：
+
+| 镜像仓库 | 地址 |
+| --- | --- |
+| **Docker Hub** | `hitaoge/zaoba` |
+| GitHub GHCR | `ghcr.io/hitaoge666/zaoba` |
+
+### 一分钟上手
+
+```bash
+# ① 拉镜像（两个源任选其一，国内建议 Docker Hub）
+docker pull hitaoge/zaoba:latest
+# docker pull ghcr.io/hitaoge666/zaoba:latest
+
+# ② 跑起来（登录态/配置/报表都在 /data，用 volume 持久化）
+docker run -d \
+  --name zaoba \
+  -p 7788:7788 \
+  -v zaoba-data:/data \
+  -e TZ=Asia/Shanghai \
+  --restart unless-stopped \
+  hitaoge/zaoba:latest
+
+# ③ 打开控制台
+# http://<宿主机IP>:7788
+```
+
+或者用 docker compose（把本仓库的 [`docker-compose.yml`](./docker-compose.yml) 拷过去）：
+
+```yaml
+services:
+  zaoba:
+    image: hitaoge/zaoba:latest
+    container_name: zaoba
+    restart: unless-stopped
+    ports:
+      - "7788:7788"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - zaoba-data:/data
+```
+
+```bash
+docker compose up -d
+```
+
+> **首次使用还需一步**：在任意电脑上装一份本工具并 `npm run login` 登录，再把登录态拷进容器：
+> `docker cp ~/.zaoba/profile/. zaoba:/data/profile/`（Windows 是 `%USERPROFILE%\.zaoba\profile`）
+>
+> ⚠️ 容器内只支持**网页类平台**（智谱清言、MiniMax Code）；WorkBuddy / 豆包工作 / Trae 等桌面客户端类平台需要在真机上跑，容器里不可用。
+
+完整的部署说明（登录态迁移、备份、环境变量、已知限制）见 **[docs/DOCKER.md](./docs/DOCKER.md)**。
+
+## 安装（本机直接跑）
 
 > **第一次用？先看 [上手教程（从零到每天自动到账）](./docs/GETTING-STARTED.md)** —— 里面写了每个平台要不要装客户端、要不要登录、`dry-run` 每个状态怎么修。
 

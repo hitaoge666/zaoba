@@ -1,16 +1,22 @@
 name: docker
 
-# 推送到 main 或打 v* 标签时，自动构建 Docker 镜像并发布到 GHCR
-# 也可以在 Actions 页面手动触发（workflow_dispatch）
+# 触发方式:
+#   1. 推送到 main / 打 v* 标签 —— 自动构建发布
+#   2. 上游同步流程（sync-upstream.yml）通过 workflow_call 调用
+#   3. Actions 页面手动触发（workflow_dispatch）
+#
+# 发布目标:
+#   - GHCR:       ghcr.io/hitaoge666/zaoba（始终推送）
+#   - Docker Hub: hitaoge/zaoba（配置了 DOCKERHUB_TOKEN secret 后自动推送）
 on:
   push:
     branches: [main]
     tags: ['v*']
+  workflow_call:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
 jobs:
   build-and-push:
@@ -28,21 +34,31 @@ jobs:
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata
+      - name: Login to Docker Hub
+        if: ${{ env.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: hitaoge
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      # ---------- GHCR ----------
+      - name: Docker metadata (GHCR)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ghcr.io/hitaoge666/zaoba
           tags: |
+            type=raw,value=latest
             type=ref,event=branch
             type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
 
-      - name: Build and push
+      - name: Build and push (GHCR)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -51,3 +67,26 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # ---------- Docker Hub ----------
+      - name: Docker metadata (Docker Hub)
+        if: ${{ env.DOCKERHUB_TOKEN != '' }}
+        id: meta-hub
+        uses: docker/metadata-action@v5
+        with:
+          images: hitaoge/zaoba
+          tags: |
+            type=raw,value=latest
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha
+
+      - name: Build and push (Docker Hub)
+        if: ${{ env.DOCKERHUB_TOKEN != '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-hub.outputs.tags }}
+          labels: ${{ steps.meta-hub.outputs.labels }}
+          cache-from: type=gha

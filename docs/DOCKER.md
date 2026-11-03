@@ -2,6 +2,17 @@
 
 把「早八」打包成 Docker 镜像，跑在 NAS / 家庭服务器 / 任意 Linux 主机上，不依赖 macOS launchd 或 Windows 计划任务——镜像内置了定时器和 Web 控制台。
 
+## 镜像地址
+
+| 仓库 | 地址 | 说明 |
+| --- | --- | --- |
+| **Docker Hub** | `hitaoge/zaoba` | 国内拉取推荐 |
+| GitHub GHCR | `ghcr.io/hitaoge666/zaoba` | 与 Docker Hub 内容完全相同 |
+
+标签规则：`latest`（最新稳定）、`main`（main 分支构建）、`sha-xxxxxxx`（具体提交）。
+
+> 本仓库每天北京时间 09:30 自动检查上游 [BorisSun0424-boop/zaoba](https://github.com/BorisSun0424-boop/zaoba) 更新并合并重建镜像，`latest` 始终与上游保持同步（合并冲突时会自动开 issue 提醒，在 Actions 页面也可随时手动触发检查）。
+
 ## ⚠️ 先看：容器里能跑哪些平台
 
 | 类型 | 平台 | 容器内可用 |
@@ -13,8 +24,17 @@
 
 ## 快速开始
 
+### 方式 A：直接拉现成镜像（推荐）
+
 ```bash
-git clone https://github.com/BorisSun0424-boop/zaoba.git
+docker pull hitaoge/zaoba:latest
+docker run -d --name zaoba -p 7788:7788 -v zaoba-data:/data -e TZ=Asia/Shanghai --restart unless-stopped hitaoge/zaoba:latest
+```
+
+### 方式 B：从源码自己构建
+
+```bash
+git clone https://github.com/hitaoge666/zaoba.git
 cd zaoba
 docker compose up -d --build
 ```

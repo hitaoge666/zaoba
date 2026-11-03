@@ -1,0 +1,102 @@
+name: sync-upstream
+
+# 每天自动检查上游 BorisSun0424-boop/zaoba 是否有更新:
+#   有更新 → 自动合并到本仓库 main → 推送 → 自动重建并发布 Docker 镜像（GHCR + Docker Hub）
+#   无更新 → 跳过，什么都不做
+#   有冲突 → 合并失败，自动开一个 issue 提醒手动处理
+#
+# 也可在 Actions 页面手动触发（workflow_dispatch）立即检查一次。
+on:
+  schedule:
+    - cron: '30 1 * * *' # 每天 UTC 01:30 = 北京时间 09:30
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      updated: ${{ steps.check.outputs.updated }}
+      merge_ok: ${{ steps.merge.outputs.merge_ok }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/BorisSun0424-boop/zaoba.git
+          git fetch upstream main
+          UPSTREAM_HEAD=$(git rev-parse upstream/main)
+          MERGE_BASE=$(git merge-base HEAD upstream/main)
+          echo "UPSTREAM_HEAD=$UPSTREAM_HEAD" >> "$GITHUB_ENV"
+          echo "MERGE_BASE=$MERGE_BASE" >> "$GITHUB_ENV"
+          echo "上游最新: $UPSTREAM_HEAD"
+          echo "共同祖先: $MERGE_BASE"
+
+      - name: Check for upstream updates
+        id: check
+        run: |
+          if [ "$UPSTREAM_HEAD" = "$MERGE_BASE" ]; then
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            echo "上游无更新，今天不用干活 ✅"
+          else
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+            echo "上游有新提交，开始同步..."
+          fi
+
+      - name: Merge upstream/main
+        id: merge
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git merge "upstream/main" --no-edit -m "chore: 同步上游 BorisSun0424-boop/zaoba@$UPSTREAM_HEAD"; then
+            echo "merge_ok=true" >> "$GITHUB_OUTPUT"
+            echo "合并成功 ✅"
+            git log --oneline -5
+          else
+            git merge --abort || true
+            echo "merge_ok=false" >> "$GITHUB_OUTPUT"
+            echo "合并冲突 ❌ 需要手动处理"
+          fi
+
+      - name: Open issue on merge conflict
+        if: steps.check.outputs.updated == 'true' && steps.merge.outputs.merge_ok == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "⚠️ 上游同步失败：合并冲突，需要手动处理" \
+            --body "自动同步上游 [\`BorisSun0424-boop/zaoba\`](https://github.com/BorisSun0424-boop/zaoba) 时出现合并冲突（上游提交 \`$UPSTREAM_HEAD\`）。
+
+          请在本地执行：
+
+          \`\`\`bash
+          git remote add upstream https://github.com/BorisSun0424-boop/zaoba.git
+          git fetch upstream main
+          git merge upstream/main
+          # 解决冲突后
+          git push origin main
+          \`\`\`
+
+          推送后会自动重建 Docker 镜像。" \
+            --label "upstream-sync" || true
+
+      - name: Push merged main
+        if: steps.check.outputs.updated == 'true' && steps.merge.outputs.merge_ok == 'true'
+        run: |
+          git push origin main
+          echo "已推送到 main，镜像重建交给 docker.yml"
+
+  # 合并成功后重建镜像（GITHUB_TOKEN 的 push 不会触发 push 事件，所以显式调用）
+  rebuild:
+    needs: sync
+    if: needs.sync.outputs.updated == 'true' && needs.sync.outputs.merge_ok == 'true'
+    uses: ./.github/workflows/docker.yml
+    secrets: inherit
