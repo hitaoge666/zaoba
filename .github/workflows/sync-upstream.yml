@@ -14,6 +14,7 @@ on:
 permissions:
   contents: write
   issues: write
+  packages: write # 被调用的 docker.yml 构建推送 GHCR 需要（workflow_call 不能升级权限）
 
 jobs:
   sync:
